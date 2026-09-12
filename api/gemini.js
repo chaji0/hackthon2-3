@@ -1,7 +1,7 @@
 // ===================================================
 // Gemini API 호출을 위한 Vercel 서버리스 함수 (/api/gemini)
 //
-// 무료 티어로 사용 가능한 gemini-1.5-flash 모델을 호출합니다.
+// 무료 티어로 사용 가능한 gemini-2.0-flash 모델을 호출합니다.
 // ===================================================
 
 export default async function handler(req, res) {
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
 학생 메모: "${text}"`;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: {
