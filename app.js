@@ -218,8 +218,15 @@ function renderUserArea() {
       try {
         await signInWithPopup(auth, provider);
       } catch (error) {
-        console.error("구글 로그인 실패:", error);
-        alert("로그인 중 오류가 발생했습니다.");
+        console.error("구글 로그인 실패 상세:", error);
+        if (error.code === "auth/unauthorized-domain") {
+          alert("Firebase 콘솔의 Authentication > Settings > 승인된 도메인에 현재 접속 주소(127.0.0.1 또는 localhost)를 추가해 주세요.");
+        } else if (error.code === "auth/popup-closed-by-user") {
+          // 사용자가 팝업을 닫은 경우는 무시하거나 가볍게 안내
+          console.log("로그인 팝업이 닫혔습니다.");
+        } else {
+          alert(`로그인 중 오류가 발생했습니다.\n[${error.code}] ${error.message}`);
+        }
       }
     });
     userArea.appendChild(loginBtn);
