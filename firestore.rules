@@ -2,18 +2,48 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // 교사(teacher) 여부 확인: users 컬렉션의 role 문서 조회
+    function isTeacher() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    // 학생(student) 여부 확인: 로그인되어 있고 users 문서가 student이거나 기본 사용자
+    function isStudent() {
+      return request.auth != null;
+    }
+
+    match /users/{userId} {
+      // 본인 프로필 읽기 허용, 교사는 전체 읽기 허용
+      allow read: if request.auth != null && (request.auth.uid == userId || isTeacher());
+      // 본인의 역할(role) 문서는 최초 생성/수정 가능 (기본값 설정용)
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
     match /memos/{memoId} {
+      // 메모 읽기는 누구나(또는 로그인 사용자) 가능
       allow read: if true;
 
-      // 입력 내용(text)이 5글자 이상일 때만 저장 허용
-      allow create: if request.resource.data.keys().hasOnly(['text', 'createdAt'])
+      // 메모 생성:
+      // 1) 로그인 필수
+      // 2) text 5글자 이상
+      // 3) 교사는 자유롭게 생성 가능
+      // 4) 학생은 본인의 uid로만 생성 가능 (본인 것만 생성)
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['text', 'createdAt', 'uid', 'authorName'])
         && request.resource.data.text is string
         && request.resource.data.text.size() >= 5
         && request.resource.data.text.size() <= 200
-        && (request.resource.data.createdAt is int || request.resource.data.createdAt is timestamp);
+        && (request.resource.data.createdAt is int || request.resource.data.createdAt is timestamp)
+        && (isTeacher() || request.resource.data.uid == request.auth.uid);
 
-      allow delete: if true;
-      allow update: if false;
+      // 메모 수정 및 삭제:
+      // 교사는 모든 메모에 대해 권한을 가짐
+      // 학생은 남의 메모를 건드릴 수 없음 (수정 불가, 삭제는 본인 메모만 허용하거나 교사만 가능)
+      allow update: if isTeacher();
+      allow delete: if isTeacher() || (request.auth != null && resource.data.uid == request.auth.uid);
     }
 
     match /{document=**} {

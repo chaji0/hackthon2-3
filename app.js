@@ -15,6 +15,8 @@ import {
   addDoc,
   deleteDoc,
   doc,
+  getDoc,
+  setDoc,
   query,
   orderBy,
   onSnapshot
@@ -43,8 +45,9 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
-// 현재 로그인한 사용자 정보 (null이면 로그아웃 상태)
+// 현재 로그인한 사용자 정보 및 역할 (null이면 로그아웃 상태)
 let currentUser = null;
+let currentUserRole = "student"; // 기본값 student, 'teacher' 또는 'student'
 
 // --- 메모 목록 (Firestore와 실시간 동기화) ---
 let memos = [];
@@ -65,6 +68,12 @@ function loadMemos() {
 // 메모를 새로 씁니다.
 // 백엔드 2: 여기에 "누가 썼는지"(uid)를 함께 저장하게 됩니다.
 async function addMemo(text) {
+  // 로그인이 되어 있어야 작성 가능
+  if (!currentUser) {
+    alert("메모를 작성하려면 먼저 Google 로그인을 해주세요.");
+    return;
+  }
+
   // 5글자 이상일 때만 Firestore에 저장
   if (!text || text.trim().length < 5) {
     alert("메모는 5글자 이상 입력해 주세요.");
@@ -74,20 +83,41 @@ async function addMemo(text) {
   try {
     await addDoc(collection(db, "memos"), {
       text: text,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      uid: currentUser.uid,
+      authorName: currentUser.displayName || "익명"
     });
   } catch (error) {
     console.error("메모 추가 실패:", error);
+    alert("메모 저장 중 오류가 발생했습니다.");
   }
 }
 
 // 메모를 지웁니다.
-// 백엔드 2: 지금은 누구든 남의 메모를 지울 수 있습니다. 이걸 막는 것이 과제입니다.
+// 교사는 모든 메모를 지울 수 있고, 학생은 본인이 작성한 메모만 지울 수 있습니다.
 async function deleteMemo(id) {
+  if (!currentUser) {
+    alert("삭제 권한이 없습니다. 로그인이 필요합니다.");
+    return;
+  }
+
+  const memo = memos.find(function (m) {
+    return m.id === id;
+  });
+
+  if (!memo) return;
+
+  // 학생인 경우 본인 메모인지 확인
+  if (currentUserRole !== "teacher" && memo.uid !== currentUser.uid) {
+    alert("다른 사람의 메모는 삭제할 수 없습니다.");
+    return;
+  }
+
   try {
     await deleteDoc(doc(db, "memos", id));
   } catch (error) {
     console.error("메모 삭제 실패:", error);
+    alert("메모 삭제 중 오류가 발생했습니다.");
   }
 }
 
@@ -110,12 +140,17 @@ function makeMemo(memo) {
   const div = document.createElement("div");
   div.className = "memo";
 
-  const del = document.createElement("button");
-  del.textContent = "×";
-  del.addEventListener("click", function () {
-    deleteMemo(memo.id);
-  });
-  div.appendChild(del);
+  // 삭제 버튼: 교사이거나 본인이 작성한 메모일 때만 표시
+  const canDelete = currentUser && (currentUserRole === "teacher" || memo.uid === currentUser.uid);
+  if (canDelete) {
+    const del = document.createElement("button");
+    del.textContent = "×";
+    del.title = "삭제";
+    del.addEventListener("click", function () {
+      deleteMemo(memo.id);
+    });
+    div.appendChild(del);
+  }
 
   const span = document.createElement("span");
   span.textContent = memo.text;
@@ -161,8 +196,9 @@ function renderUserArea() {
   userArea.innerHTML = "";
 
   if (currentUser) {
+    const roleLabel = currentUserRole === "teacher" ? " [선생님]" : " [학생]";
     const welcome = document.createElement("span");
-    welcome.textContent = `${currentUser.displayName || "선생님"}님 환영합니다! `;
+    welcome.textContent = `${currentUser.displayName || "사용자"}님${roleLabel} 환영합니다! `;
     userArea.appendChild(welcome);
 
     const logoutBtn = document.createElement("button");
@@ -190,10 +226,44 @@ function renderUserArea() {
   }
 }
 
+// 사용자 역할(teacher / student) 불러오기
+async function loadUserRole(user) {
+  if (!user) {
+    currentUserRole = "student";
+    return;
+  }
+
+  try {
+    const userDocRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userDocRef);
+
+    if (userSnap.exists()) {
+      currentUserRole = userSnap.data().role || "student";
+    } else {
+      // 기본값은 student 로 등록
+      currentUserRole = "student";
+      await setDoc(userDocRef, {
+        role: "student",
+        name: user.displayName || "익명",
+        createdAt: Date.now()
+      });
+    }
+  } catch (error) {
+    console.warn("사용자 역할 조회 실패(기본값 student 적용):", error);
+    currentUserRole = "student";
+  }
+}
+
 // 인증 상태 변화 감지 (로그인 / 로그아웃 시 자동 실행)
-onAuthStateChanged(auth, function (user) {
+onAuthStateChanged(auth, async function (user) {
   currentUser = user;
+  if (user) {
+    await loadUserRole(user);
+  } else {
+    currentUserRole = "student";
+  }
   renderUserArea();
+  render(); // 권한에 따른 삭제 버튼 노출 갱신
 });
 
 
@@ -206,10 +276,13 @@ const q = query(collection(db, "memos"), orderBy("createdAt", "asc"));
 onSnapshot(q, function (snapshot) {
   memos = [];
   snapshot.forEach(function (docSnap) {
+    const data = docSnap.data();
     memos.push({
       id: docSnap.id,
-      text: docSnap.data().text,
-      createdAt: docSnap.data().createdAt
+      text: data.text,
+      createdAt: data.createdAt,
+      uid: data.uid,
+      authorName: data.authorName
     });
   });
   render();
