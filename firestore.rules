@@ -3,12 +3,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /memos/{memoId} {
-      // 읽기와 삭제 허용
-      allow read, delete: if true;
+      allow read: if true;
 
-      // 메모 등록/수정 시 text 필드가 문자열이고 5글자 이상일 때만 허용
-      allow create, update: if request.resource.data.text is string 
-                            && request.resource.data.text.size() >= 5;
+      // 입력 내용(text)이 5글자 이상일 때만 저장 허용
+      allow create: if request.resource.data.keys().hasOnly(['text', 'createdAt'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 5
+        && request.resource.data.text.size() <= 200
+        && (request.resource.data.createdAt is int || request.resource.data.createdAt is timestamp);
+
+      allow delete: if true;
+      allow update: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
