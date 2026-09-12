@@ -19,6 +19,13 @@ import {
   orderBy,
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import {
+  getAuth,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 
 // Firebase 설정 정보
 const firebaseConfig = {
@@ -30,9 +37,14 @@ const firebaseConfig = {
   appId: "1:189149246215:web:7e9cc7ca5f3d6732e10ba2"
 };
 
-// Firebase 초기화 및 Firestore 데이터베이스 연결
+// Firebase 초기화 및 서비스 연결
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
+// 현재 로그인한 사용자 정보 (null이면 로그아웃 상태)
+let currentUser = null;
 
 // --- 메모 목록 (Firestore와 실시간 동기화) ---
 let memos = [];
@@ -135,6 +147,53 @@ input.addEventListener("keydown", function (e) {
     addMemo(text);
     input.value = "";
   }
+});
+
+
+// ===================================================
+// 구글 로그인 / 로그아웃 기능
+// ===================================================
+
+const userArea = document.getElementById("userArea");
+
+// 사용자 상태에 따른 상단 로그인 영역 렌더링
+function renderUserArea() {
+  userArea.innerHTML = "";
+
+  if (currentUser) {
+    const welcome = document.createElement("span");
+    welcome.textContent = `${currentUser.displayName || "선생님"}님 환영합니다! `;
+    userArea.appendChild(welcome);
+
+    const logoutBtn = document.createElement("button");
+    logoutBtn.textContent = "로그아웃";
+    logoutBtn.addEventListener("click", async function () {
+      try {
+        await signOut(auth);
+      } catch (error) {
+        console.error("로그아웃 실패:", error);
+      }
+    });
+    userArea.appendChild(logoutBtn);
+  } else {
+    const loginBtn = document.createElement("button");
+    loginBtn.textContent = "Google 계정으로 로그인";
+    loginBtn.addEventListener("click", async function () {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (error) {
+        console.error("구글 로그인 실패:", error);
+        alert("로그인 중 오류가 발생했습니다.");
+      }
+    });
+    userArea.appendChild(loginBtn);
+  }
+}
+
+// 인증 상태 변화 감지 (로그인 / 로그아웃 시 자동 실행)
+onAuthStateChanged(auth, function (user) {
+  currentUser = user;
+  renderUserArea();
 });
 
 
