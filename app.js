@@ -17,6 +17,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
   query,
   orderBy,
   onSnapshot
@@ -135,6 +136,43 @@ function render() {
   });
 }
 
+// AI 코멘트 생성 요청 (교사 전용)
+// AGENTS.md 규칙: uid 등 식별 정보는 Gemini에 전달하지 않고 오직 메모 내용(text)만 전달합니다.
+async function generateAiComment(memo, buttonElement) {
+  if (currentUserRole !== "teacher") {
+    alert("AI 코멘트는 선생님만 남길 수 있습니다.");
+    return;
+  }
+
+  const originalText = buttonElement.textContent;
+  buttonElement.textContent = "작성 중...";
+  buttonElement.disabled = true;
+
+  try {
+    const response = await fetch("/api/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: memo.text })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "코멘트 생성에 실패했습니다.");
+    }
+
+    // Firestore 메모 문서에 aiComment 업데이트 저장
+    await updateDoc(doc(db, "memos", memo.id), {
+      aiComment: result.comment
+    });
+  } catch (error) {
+    console.error("AI 코멘트 생성 실패:", error);
+    alert(`AI 코멘트 생성 중 오류: ${error.message}`);
+    buttonElement.textContent = originalText;
+    buttonElement.disabled = false;
+  }
+}
+
 // 메모 한 장 만들기
 function makeMemo(memo) {
   const div = document.createElement("div");
@@ -152,9 +190,29 @@ function makeMemo(memo) {
     div.appendChild(del);
   }
 
+  // AI 코멘트 버튼: 교사(teacher)에게만 표시
+  if (currentUser && currentUserRole === "teacher") {
+    const aiBtn = document.createElement("button");
+    aiBtn.className = "ai-btn";
+    aiBtn.textContent = memo.aiComment ? "AI 재작성" : "AI 코멘트";
+    aiBtn.title = "Gemini AI 도우미 코멘트 생성";
+    aiBtn.addEventListener("click", function () {
+      generateAiComment(memo, aiBtn);
+    });
+    div.appendChild(aiBtn);
+  }
+
   const span = document.createElement("span");
   span.textContent = memo.text;
   div.appendChild(span);
+
+  // 이미 작성된 AI 코멘트가 있으면 담벼락 카드 아래에 표시
+  if (memo.aiComment) {
+    const commentBox = document.createElement("div");
+    commentBox.className = "ai-comment";
+    commentBox.textContent = `🤖 AI 도우미: ${memo.aiComment}`;
+    div.appendChild(commentBox);
+  }
 
   return div;
 }
@@ -289,7 +347,8 @@ onSnapshot(q, function (snapshot) {
       text: data.text,
       createdAt: data.createdAt,
       uid: data.uid,
-      authorName: data.authorName
+      authorName: data.authorName,
+      aiComment: data.aiComment || null
     });
   });
   render();

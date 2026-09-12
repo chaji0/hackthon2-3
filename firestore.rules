@@ -32,7 +32,7 @@ service cloud.firestore {
       // 3) 교사는 자유롭게 생성 가능
       // 4) 학생은 본인의 uid로만 생성 가능 (본인 것만 생성)
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['text', 'createdAt', 'uid', 'authorName'])
+        && request.resource.data.keys().hasOnly(['text', 'createdAt', 'uid', 'authorName', 'aiComment'])
         && request.resource.data.text is string
         && request.resource.data.text.size() >= 5
         && request.resource.data.text.size() <= 200
@@ -40,8 +40,8 @@ service cloud.firestore {
         && (isTeacher() || request.resource.data.uid == request.auth.uid);
 
       // 메모 수정 및 삭제:
-      // 교사는 모든 메모에 대해 권한을 가짐
-      // 학생은 남의 메모를 건드릴 수 없음 (수정 불가, 삭제는 본인 메모만 허용하거나 교사만 가능)
+      // 교사는 모든 메모에 대해 수정(AI 코멘트 추가 등) 및 삭제 권한을 가짐
+      // 학생은 남의 메모를 건드릴 수 없음 (수정 불가, 삭제는 본인 메모만 허용)
       allow update: if isTeacher();
       allow delete: if isTeacher() || (request.auth != null && resource.data.uid == request.auth.uid);
     }

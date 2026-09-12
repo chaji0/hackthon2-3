@@ -1,23 +1,64 @@
 // ===================================================
-// Gemini에게 물어보는 서버 코드가 들어올 자리 (아직 비어 있습니다)
+// Gemini API 호출을 위한 Vercel 서버리스 함수 (/api/gemini)
 //
-// 왜 서버가 필요한가요?
-//   API 키를 브라우저 코드(app.js)에 적으면 누구나 볼 수 있습니다.
-//   그래서 키는 서버에만 두고, 브라우저는 이 주소로 부탁만 합니다.
-//
-// 왜 Firebase Functions가 아니라 여기인가요?
-//   Firebase Functions는 유료 요금제(Blaze)라야 씁니다.
-//   이 프로젝트는 무료 요금제(Spark)로 진행하므로,
-//   서버가 필요한 일은 Vercel의 무료 함수로 처리합니다.
-//
-// 이 파일의 규칙
-//   api 폴더 안의 파일은 Vercel에서 자동으로 서버 주소가 됩니다.
-//   이 파일은 /api/gemini 주소가 됩니다.
-//   API 키는 코드에 적지 말고 Vercel 환경변수에 넣습니다. (process.env 로 꺼내 씁니다)
+// 무료 티어로 사용 가능한 gemini-1.5-flash 모델을 호출합니다.
 // ===================================================
 
-export default function handler(req, res) {
-  res.status(501).json({
-    error: "아직 만들지 않았습니다. 백엔드 2 시간에 이 파일을 채웁니다."
-  });
+export default async function handler(req, res) {
+  // POST 요청만 허용
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const { text } = req.body;
+  if (!text || typeof text !== "string") {
+    return res.status(400).json({ error: "메모 내용이 전달되지 않았습니다." });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({
+      error: "GEMINI_API_KEY 환경변수가 설정되지 않았습니다. Vercel 환경변수에 추가해 주세요."
+    });
+  }
+
+  try {
+    const prompt = `당신은 친절하고 격려를 아끼지 않는 초등학교/중학교 선생님의 인공지능 도우미입니다.
+학생이 학급 담벼락에 남긴 다음 메모 글을 읽고, 학생에게 힘이 되고 배움을 칭찬해주는 따뜻한 1~2문장의 코멘트를 남겨주세요.
+학생의 개인정보나 식별 정보는 일체 포함하지 마세요.
+
+학생 메모: "${text}"`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: prompt }]
+            }
+          ]
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errData = await response.json();
+      return res.status(response.status).json({
+        error: errData.error?.message || "Gemini API 호출 실패"
+      });
+    }
+
+    const data = await response.json();
+    const comment = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "좋은 생각이에요! 계속 응원할게요.";
+
+    return res.status(200).json({ comment });
+  } catch (error) {
+    console.error("Gemini API 처리 중 오류:", error);
+    return res.status(500).json({ error: "서버 오류가 발생했습니다." });
+  }
 }
