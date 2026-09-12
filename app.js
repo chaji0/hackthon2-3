@@ -7,25 +7,43 @@
 // ===================================================
 
 
-// --- 메모 목록 ---
-// createdAt 은 메모를 쓴 시각(밀리초)입니다. 이 값으로 순서를 정합니다.
-let memos = [
-  { id: 1, text: "오늘 과학 시간에 한 실험이 재미있었다", createdAt: 1757030400000 },
-  { id: 2, text: "궁금한 점 - 물은 왜 100도에서 끓나요?", createdAt: 1757030500000 },
-  { id: 3, text: "모둠 친구들이 도와줘서 고마웠다", createdAt: 1757030600000 }
-];
+// --- Firebase 모듈 불러오기 ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  query,
+  orderBy,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
-let nextId = 4;  // 새 메모에 붙일 번호
+// Firebase 설정 정보
+const firebaseConfig = {
+  apiKey: "AIzaSyCAct_w0WE8OSajSgMRGpAFc6oSQD2HkbU",
+  authDomain: "hackthon-a6c6d.firebaseapp.com",
+  projectId: "hackthon-a6c6d",
+  storageBucket: "hackthon-a6c6d.firebasestorage.app",
+  messagingSenderId: "189149246215",
+  appId: "1:189149246215:web:7e9cc7ca5f3d6732e10ba2"
+};
+
+// Firebase 초기화 및 Firestore 데이터베이스 연결
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// --- 메모 목록 (Firestore와 실시간 동기화) ---
+let memos = [];
 
 
 // ===================================================
 // 데이터를 다루는 함수 세 개
-// 백엔드 1 시간에 이 세 개가 Firestore를 쓰는 코드로 바뀝니다.
+// Firestore 데이터베이스와 통신합니다.
 // ===================================================
 
 // 메모를 읽어 옵니다.
-// 백엔드 1: 여기가 Firestore에서 가져오는 코드로 바뀝니다.
-//           순서는 orderBy("createdAt") 으로 맞춥니다.
 function loadMemos() {
   return memos.slice().sort(function (a, b) {
     return a.createdAt - b.createdAt;
@@ -34,21 +52,25 @@ function loadMemos() {
 
 // 메모를 새로 씁니다.
 // 백엔드 2: 여기에 "누가 썼는지"(uid)를 함께 저장하게 됩니다.
-function addMemo(text) {
-  memos.push({
-    id: nextId,
-    text: text,
-    createdAt: Date.now()
-  });
-  nextId = nextId + 1;
+async function addMemo(text) {
+  try {
+    await addDoc(collection(db, "memos"), {
+      text: text,
+      createdAt: Date.now()
+    });
+  } catch (error) {
+    console.error("메모 추가 실패:", error);
+  }
 }
 
 // 메모를 지웁니다.
 // 백엔드 2: 지금은 누구든 남의 메모를 지울 수 있습니다. 이걸 막는 것이 과제입니다.
-function deleteMemo(id) {
-  memos = memos.filter(function (memo) {
-    return memo.id !== id;
-  });
+async function deleteMemo(id) {
+  try {
+    await deleteDoc(doc(db, "memos", id));
+  } catch (error) {
+    console.error("메모 삭제 실패:", error);
+  }
 }
 
 
@@ -107,6 +129,22 @@ input.onkeydown = function (e) {
 };
 
 
-// 첫 화면 그리기
-render();
+// ===================================================
+// Firestore 실시간 동기화
+// 데이터가 추가되거나 삭제되면 자동으로 화면을 다시 그립니다.
+// ===================================================
+
+const q = query(collection(db, "memos"), orderBy("createdAt", "asc"));
+onSnapshot(q, function (snapshot) {
+  memos = [];
+  snapshot.forEach(function (docSnap) {
+    memos.push({
+      id: docSnap.id,
+      text: docSnap.data().text,
+      createdAt: docSnap.data().createdAt
+    });
+  });
+  render();
+});
+
 input.focus();
