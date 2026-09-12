@@ -94,10 +94,9 @@ function makeMemo(memo) {
 
   const del = document.createElement("button");
   del.textContent = "×";
-  del.onclick = function () {
+  del.addEventListener("click", function () {
     deleteMemo(memo.id);
-    render();
-  };
+  });
   div.appendChild(del);
 
   const span = document.createElement("span");
@@ -115,7 +114,7 @@ function makeMemo(memo) {
 
 const input = document.getElementById("input");
 
-input.onkeydown = function (e) {
+input.addEventListener("keydown", function (e) {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
 
@@ -124,9 +123,8 @@ input.onkeydown = function (e) {
 
     addMemo(text);
     input.value = "";
-    render();
   }
-};
+});
 
 
 // ===================================================
